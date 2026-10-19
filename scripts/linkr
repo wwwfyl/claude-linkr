@@ -1,0 +1,77 @@
+#!/bin/bash
+# Drive the screen behind LinkR via its public HTTP API.
+set -euo pipefail
+
+CONF=${XDG_CONFIG_HOME:-$HOME/.config}/linkr
+HOST=${LINKR_HOST:-$(cat "$CONF/host" 2>/dev/null || true)}
+TOKEN=${LINKR_TOKEN:-$(cat "$CONF/token" 2>/dev/null || true)}
+[[ -n $HOST && -n $TOKEN ]] || {
+	echo "linkr: set LINKR_HOST/LINKR_TOKEN or write $CONF/host and $CONF/token" >&2
+	exit 1
+}
+W=${LINKR_W:-1920}
+H=${LINKR_H:-1080}
+
+api() {
+	local path=$1
+	shift
+	curl -fsS --noproxy '*' -m 60 -H "Authorization: token $TOKEN" "$@" "http://$HOST/api/public/$path"
+}
+
+# events are JSON arrays passed as arguments, e.g. '["delay",100]'
+send() {
+	local resp
+	resp=$(jq -cn --args '{events: [$ARGS.positional[] | fromjson]}' "$@" | api control -H 'Content-Type: application/json' -d @-)
+	[[ $(jq -r .code <<<"$resp") == 0 ]] || {
+		echo "linkr: $resp" >&2
+		exit 1
+	}
+}
+
+# LinkR absolute mouse coordinates are fractions 0..1 of the screen
+frac() { awk -v v="$1" -v m="$2" 'BEGIN { printf "%.4f", v / (m - 1) }'; }
+
+mouse() { echo "[\"mouse_abs\",$1,$(frac "$2" "$W"),$(frac "$3" "$H"),${4:-0},0]"; }
+
+case ${1:-} in
+shot)
+	out=${2:-/tmp/linkr.jpg}
+	api snapshot -o "$out"
+	if (($# == 6)); then convert "$out" -crop "$(($5 - $3))x$(($6 - $4))+$3+$4" +repage "$out"; fi
+	echo "$out"
+	;;
+ocr)
+	tmp=$(mktemp --suffix=.jpg)
+	api snapshot -o "$tmp"
+	# tesseract misses light-on-dark UI text
+	convert "$tmp" -colorspace gray -threshold 70% -negate "$tmp"
+	tesseract "$tmp" - --psm 11 2>/dev/null | grep -v '^\s*$'
+	rm -f "$tmp"
+	;;
+move) send "$(mouse 0 "$2" "$3")" ;;
+click)
+	declare -A btn=([left]=1 [right]=2 [middle]=4)
+	send "$(mouse 0 "$2" "$3")" '["delay",100]' "$(mouse "${btn[${4:-left}]}" "$2" "$3")" '["delay",100]' "$(mouse 0 "$2" "$3")"
+	;;
+type)
+	# LinkR drops characters unless text goes in ~30-char chunks with a pause after each
+	ev=()
+	for ((i = 0; i < ${#2}; i += 30)); do ev+=("$(jq -cn --arg t "${2:i:30}" '["text",$t]')" '["delay",1000]'); done
+	send "${ev[@]}"
+	;;
+key)
+	ev=()
+	for k in "${@:2}"; do ev+=("[\"keyboard\",\"$k\",true]"); done
+	ev+=('["delay",50]')
+	for ((i = $#; i >= 2; i--)); do ev+=("[\"keyboard\",\"${!i}\",false]"); done
+	send "${ev[@]}"
+	;;
+scroll) send "[\"mouse_rel\",0,0,0,$2,0]" ;;
+*)
+	cat <<EOF
+usage: linkr shot [file.jpg [X1 Y1 X2 Y2]] | ocr | move X Y | click X Y [left|right|middle]
+       linkr type TEXT | key KEY... (e.g. Enter, ControlLeft KeyA) | scroll DY
+EOF
+	exit 1
+	;;
+esac
