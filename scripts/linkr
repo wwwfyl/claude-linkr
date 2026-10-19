@@ -33,6 +33,8 @@ frac() { awk -v v="$1" -v m="$2" 'BEGIN { printf "%.4f", v / (m - 1) }'; }
 
 mouse() { echo "[\"mouse_abs\",$1,$(frac "$2" "$W"),$(frac "$3" "$H"),${4:-0},0]"; }
 
+declare -A btn=([left]=1 [right]=2 [middle]=4)
+
 case ${1:-} in
 shot)
 	out=${2:-/tmp/linkr.jpg}
@@ -50,8 +52,17 @@ ocr)
 	;;
 move) send "$(mouse 0 "$2" "$3")" ;;
 click)
-	declare -A btn=([left]=1 [right]=2 [middle]=4)
 	send "$(mouse 0 "$2" "$3")" '["delay",100]' "$(mouse "${btn[${4:-left}]}" "$2" "$3")" '["delay",100]' "$(mouse 0 "$2" "$3")"
+	;;
+drag)
+	# a held button moved in steps reads as a one-finger swipe to touch UIs
+	b=${btn[${6:-left}]} ms=${7:-500} n=15
+	ev=("$(mouse 0 "$2" "$3")" '["delay",100]' "$(mouse "$b" "$2" "$3")" '["delay",100]')
+	for ((i = 1; i <= n; i++)); do
+		ev+=("$(mouse "$b" $(($2 + ($4 - $2) * i / n)) $(($3 + ($5 - $3) * i / n)))" "[\"delay\",$((ms / n))]")
+	done
+	ev+=('["delay",100]' "$(mouse 0 "$4" "$5")")
+	send "${ev[@]}"
 	;;
 type)
 	# LinkR drops characters unless text goes in ~30-char chunks with a pause after each
@@ -70,6 +81,7 @@ scroll) send "[\"mouse_rel\",0,0,0,$2,0]" ;;
 *)
 	cat <<EOF
 usage: linkr shot [file.jpg [X1 Y1 X2 Y2]] | ocr | move X Y | click X Y [left|right|middle]
+       linkr drag X1 Y1 X2 Y2 [left|right|middle] [MS]
        linkr type TEXT | key KEY... (e.g. Enter, ControlLeft KeyA) | scroll DY
 EOF
 	exit 1

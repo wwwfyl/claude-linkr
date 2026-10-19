@@ -24,6 +24,7 @@ linkr shot /tmp/screen.jpg            # full screenshot
 linkr shot /tmp/part.jpg 0 0 800 600  # cropped
 linkr ocr
 linkr click 960 540
+linkr drag 960 800 960 300            # swipe up (one finger)
 linkr type 'hello world'
 linkr key ControlLeft KeyA
 linkr scroll 5

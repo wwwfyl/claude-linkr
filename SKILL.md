@@ -28,6 +28,7 @@ If neither is set, ask the user for the address and token, then write them to th
 | `linkr ocr` | Screenshot + local tesseract; prints recognised lines. |
 | `linkr move X Y` | Move the pointer. |
 | `linkr click X Y [left\|right\|middle]` | Move and click. |
+| `linkr drag X1 Y1 X2 Y2 [left\|right\|middle] [MS]` | Press, move in steps over `MS` ms (default 500), release. A left drag is a one-finger swipe: scrolls touch lists, rotates 3D views. |
 | `linkr type TEXT` | Type ASCII text (printable 32–126, Tab, newline). |
 | `linkr key KEY...` | Press keys together, release in reverse: `linkr key Enter`, `linkr key ControlLeft KeyA`. |
 | `linkr scroll DY` | Scroll the wheel, `-20..20`, positive is down. |
@@ -45,6 +46,8 @@ Chain steps with `&&` in one Bash call: `linkr click 960 453 && sleep 2 && linkr
 ## Gotchas
 
 - `type` is slow: LinkR drops characters unless text is sent in ~30-character chunks with a 1 s pause after each, which the script does for you. Non-ASCII text cannot be typed at all.
+- Touch is emulated with a single mouse: one-finger taps and swipes work, multi-touch (pinch, two-finger rotate) cannot be produced. Try `scroll` as a zoom substitute and say pinch itself is untested.
+- Touch lists often have inertia: a fast `drag` scrolls further than its length. Use a larger `MS` for precise positioning.
 - The first HID event after a long idle can be lost — verify with a screenshot.
 - `ocr` thresholds the image for light text on dark UIs; on light themes it may read poorly — read the screenshot instead.
 - Don't race on-screen countdowns (auto-reboot timers, etc.) with scripted clicks; ask the user or disable the auto action first.
